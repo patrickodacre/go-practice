@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"encoding/csv"
 	"flag"
 	"fmt"
@@ -55,89 +54,54 @@ func main() {
 
 	resultsReport = append(resultsReport, []string{"Results:", timestamp})
 
-	// Read the input to start
-	buf := bufio.NewReader(os.Stdin)
-
 	fmt.Println("You will have " + strconv.Itoa(*limitSeconds) + " seconds to complete the quiz.")
 	fmt.Println("Hit enter when you're ready to start...")
 
-	// ReadBytes until \n which is "enter".
-	// because \n is our delimeter, we have to trim
-	// that off our answer to do a comparison with the
-	// expected answer.
-	_, err = buf.ReadBytes('\n')
+	// Hold until ENTER
+	fmt.Scanf("\n")
 
-	failOnError(err, "Failed to start the quiz")
+	timer := time.NewTimer(time.Duration(*limitSeconds) * time.Second)
 
-	// countdown
-	go func() {
-
-		limit := *limitSeconds
-
-		for range time.Tick(1 * time.Second) {
-			limit--
-
-			if limit <= 0 {
-				timesup = true
-				log.Println("Time's up!")
-				break
-			}
-		}
-	}()
-
-	for _, problem := range problems {
-		reportEntry := []string{}
+problemsLoop:
+	for i, problem := range problems {
 
 		question := problem[0]
 		expectedAnswer := strings.ToLower(problem[1])
+		reportEntry := []string{question}
 
-		// if the time is up, we want to continue to
-		// write questions and results to the final report
-		if timesup {
-			reportEntry = append(reportEntry, question)
-			reportEntry = append(reportEntry, "time limit reached")
-			reportEntry = append(reportEntry, "--")
+		fmt.Printf("Problem %d out of %d : %s = ?", i+1, numOfQuestions, question)
+		// create a new channel to accept the answer for the question:
+		answerChan := make(chan string)
 
-			resultsReport = append(resultsReport, reportEntry)
-			continue
-		}
+		go func() {
 
-		// Read the input / answer
-		buf := bufio.NewReader(os.Stdin)
+			var answer string
+			// accepts a single string and then ENTER
+			fmt.Scanf("%s\n", &answer)
 
-		reportEntry = append(reportEntry, question)
+			answer = strings.Trim(answer, " ")
+			answer = strings.ToLower(answer)
 
-		fmt.Println("> " + question + " = ?")
+			answerChan <- answer
+		}()
 
-		// ReadBytes until \n which is "enter".
-		// because \n is our delimeter, we have to trim
-		// that off our answer to do a comparison with the
-		// expected answer.
-		input, err := buf.ReadBytes('\n')
+		select {
+		case <-timer.C:
+			fmt.Println("")
+			fmt.Println("Time's up!")
+			fmt.Println("")
+			break problemsLoop
+		case answer := <-answerChan:
 
-		if err != nil {
-			reportEntry = append(reportEntry, "invalid")
-			reportEntry = append(reportEntry, "false")
+			fmt.Println("...saved")
 
-			continue
-		}
+			if answer == expectedAnswer {
+				numOfCorrectAnswers++
 
-		answerGiven := string(input)
-
-		fmt.Println("...saved")
-
-		answerGiven = strings.Trim(answerGiven, " ")
-		answerGiven = strings.ToLower(answerGiven)
-		answerGiven = answerGiven[:len(answerGiven)-1] // trim off the \n
-
-		// record the answer given w/o the \n or whitespace
-		reportEntry = append(reportEntry, answerGiven)
-
-		if answerGiven == expectedAnswer {
-			numOfCorrectAnswers++
-			reportEntry = append(reportEntry, "true")
-		} else {
-			reportEntry = append(reportEntry, "false")
+				reportEntry = append(reportEntry, answer, "true")
+			} else {
+				reportEntry = append(reportEntry, answer, "false")
+			}
 		}
 
 		resultsReport = append(resultsReport, reportEntry)
@@ -169,6 +133,9 @@ func printResults(resultsReport [][]string) {
 	w.Flush()
 
 	failOnError(err, "Errors flushing report.")
+
+	fmt.Println("Report Printed")
+	os.Exit(1)
 }
 
 func failOnError(err error, msg string) {
