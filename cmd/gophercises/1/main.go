@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/csv"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -10,13 +11,18 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"flag"
 )
+
+var timestamp string
+var numOfCorrectAnswers int
+var numOfQuestions int
+var timesup bool
 
 func main() {
 
 	var (
 		problemSetFile = flag.String("problemset", "problems.csv", "Specify a problem set file.")
+		limitSeconds   = flag.Int("limitseconds", 30, "Specific a time limit in seconds.")
 	)
 
 	flag.Parse()
@@ -29,31 +35,72 @@ func main() {
 
 	r := csv.NewReader(problemSet)
 
-	// counters
-	numOfCorrectAnswers := 0
-	numOfQuestions := 0
-
-	resultsReport := [][]string{}
-	now, _ := time.Now().MarshalText()
-	timestamp := string(string(now)[:10])
-
-	resultsReport = append(resultsReport, []string{"Results:", timestamp})
+	problems := [][]string{}
 
 	for {
-		reportEntry := []string{}
-
-		record, err := r.Read()
+		problem, err := r.Read()
 
 		if err == io.EOF {
 			break
 		}
 
-		failOnError(err, "Error reading problem set.")
+		problems = append(problems, problem)
+	}
 
-		question := record[0]
-		expectedAnswer := record[1]
+	numOfQuestions = len(problems)
 
-		numOfQuestions++
+	resultsReport := [][]string{}
+	now, _ := time.Now().MarshalText()
+	timestamp = string(string(now)[:10])
+
+	resultsReport = append(resultsReport, []string{"Results:", timestamp})
+
+	// Read the input to start
+	buf := bufio.NewReader(os.Stdin)
+
+	fmt.Println("You will have " + strconv.Itoa(*limitSeconds) + " seconds to complete the quiz.")
+	fmt.Println("Hit enter when you're ready to start...")
+
+	// ReadBytes until \n which is "enter".
+	// because \n is our delimeter, we have to trim
+	// that off our answer to do a comparison with the
+	// expected answer.
+	_, err = buf.ReadBytes('\n')
+
+	failOnError(err, "Failed to start the quiz")
+
+	// countdown
+	go func() {
+
+		limit := *limitSeconds
+
+		for range time.Tick(1 * time.Second) {
+			limit--
+
+			if limit <= 0 {
+				timesup = true
+				log.Println("Time's up!")
+				break
+			}
+		}
+	}()
+
+	for _, problem := range problems {
+		reportEntry := []string{}
+
+		question := problem[0]
+		expectedAnswer := strings.ToLower(problem[1])
+
+		// if the time is up, we want to continue to
+		// write questions and results to the final report
+		if timesup {
+			reportEntry = append(reportEntry, question)
+			reportEntry = append(reportEntry, "time limit reached")
+			reportEntry = append(reportEntry, "--")
+
+			resultsReport = append(resultsReport, reportEntry)
+			continue
+		}
 
 		// Read the input / answer
 		buf := bufio.NewReader(os.Stdin)
@@ -77,25 +124,14 @@ func main() {
 
 		answerGiven := string(input)
 
-		// fmt.Println(string(response))
 		fmt.Println("...saved")
 
-		answerGiven = string(answerGiven)
 		answerGiven = strings.Trim(answerGiven, " ")
+		answerGiven = strings.ToLower(answerGiven)
 		answerGiven = answerGiven[:len(answerGiven)-1] // trim off the \n
 
 		// record the answer given w/o the \n or whitespace
 		reportEntry = append(reportEntry, answerGiven)
-
-		// verify the answer is a number:
-		_, err = strconv.Atoi(answerGiven)
-
-		// invalid input
-		if err != nil {
-			reportEntry = append(reportEntry, "false")
-
-			continue
-		}
 
 		if answerGiven == expectedAnswer {
 			numOfCorrectAnswers++
@@ -106,6 +142,11 @@ func main() {
 
 		resultsReport = append(resultsReport, reportEntry)
 	}
+
+	printResults(resultsReport)
+}
+
+func printResults(resultsReport [][]string) {
 
 	resultsReport = append(resultsReport, []string{"", "", "Final Score", strconv.Itoa(numOfCorrectAnswers) + "/" + strconv.Itoa(numOfQuestions)})
 
@@ -119,8 +160,8 @@ func main() {
 
 	w := csv.NewWriter(reportFile)
 
-	for _, record := range resultsReport {
-		if err := w.Write(record); err != nil {
+	for _, result := range resultsReport {
+		if err := w.Write(result); err != nil {
 			failOnError(err, "Error writing report.")
 		}
 	}
