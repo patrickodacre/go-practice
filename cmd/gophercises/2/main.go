@@ -1,31 +1,38 @@
 package main
 
 import (
+	"flag"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 
 	"gopkg.in/yaml.v2"
-)
-
-var (
-	yamlRedirects = `
-- path: /urlshort
-  url: https://github.com/gophercises/urlshort
-- path: /urlshort-final
-  url: https://github.com/gophercises/urlshort/tree/solution
-`
 )
 
 // A map containing ALL redirects regardless of their source config, eg: yaml, json, etc.
 var redirects *map[string]string
 
 func main() {
+
+	var (
+		yamlFile = flag.String("yaml-redirects", "./yaml-redirects.yaml", "Specify a local yaml file with the desired redirects.")
+	)
+
+	flag.Parse()
+
 	// default mux will be our final fallback
 	mux := defaultMux()
 
 	redirects = &map[string]string{
 		"/urlshort-godoc": "https://godoc.org/github.com/gophercises/urlshort",
 		"/yaml-godoc":     "https://godoc.org/gopkg.in/yaml.v2",
+	}
+
+	// yaml file
+	yamlRedirects, err := ioutil.ReadFile(*yamlFile)
+
+	if err != nil {
+		panic(err)
 	}
 
 	addYAMLRedirects([]byte(yamlRedirects), redirects)
