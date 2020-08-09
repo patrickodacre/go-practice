@@ -86,7 +86,7 @@ func addYAMLRedirects(yml []byte, redirects *map[string]string) {
 	// Just inline the struct.
 	// No need for a named type
 	// before we need this struct elsewhere.
-	yamlMappings := []struct{
+	yamlMappings := []struct {
 		Path string `yaml:"path"`
 		URL  string `yaml:"url"`
 	}{}
