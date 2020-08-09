@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -16,6 +17,7 @@ func main() {
 
 	var (
 		yamlFile = flag.String("yaml-redirects", "./yaml-redirects.yaml", "Specify a local yaml file with the desired redirects.")
+		jsonFile = flag.String("json-redirects", "./json-redirects.json", "Specify a local json file with the desired redirects.")
 	)
 
 	flag.Parse()
@@ -35,7 +37,14 @@ func main() {
 		panic(err)
 	}
 
+	jsonRedirects, err := ioutil.ReadFile(*jsonFile)
+
+	if err != nil {
+		panic(err)
+	}
+
 	addYAMLRedirects([]byte(yamlRedirects), redirects)
+	addJSONRedirects([]byte(jsonRedirects), redirects)
 
 	handler := createHandler(redirects, mux)
 
@@ -100,6 +109,30 @@ func addYAMLRedirects(yml []byte, redirects *map[string]string) {
 	}
 
 	for _, m := range yamlMappings {
+		(*redirects)[m.Path] = m.URL
+	}
+}
+
+// addJSONRedirects appends the YAML-configured redirects to the master redirect map.
+func addJSONRedirects(jsonRedirects []byte, redirects *map[string]string) {
+
+	// Just inline the struct.
+	// No need for a named type
+	// before we need this struct elsewhere.
+	jsonMappings := []struct {
+		Path string `json:"path"`
+		URL  string `json:"url"`
+	}{}
+
+	err := json.Unmarshal(jsonRedirects, &jsonMappings)
+
+	// if we can't parse the redirects,
+	// we shouldn't continue.
+	if err != nil {
+		panic(err)
+	}
+
+	for _, m := range jsonMappings {
 		(*redirects)[m.Path] = m.URL
 	}
 }

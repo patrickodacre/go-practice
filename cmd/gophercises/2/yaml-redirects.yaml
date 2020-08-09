@@ -1,4 +1,4 @@
-- path: /urlshort
+- path: /yaml/urlshort
   url: https://github.com/gophercises/urlshort
-- path: /urlshort-final
+- path: /yaml/urlshort-final
   url: https://github.com/gophercises/urlshort/tree/solution
