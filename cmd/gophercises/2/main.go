@@ -7,37 +7,40 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-type yamlConfig struct {
-	Path string `yaml:"path"`
-	URL  string `yaml:"url"`
-}
-
-func main() {
-	mux := defaultMux()
-
-	// Build the MapHandler using the mux as the fallback
-	pathsToUrls := map[string]string{
-		"/urlshort-godoc": "https://godoc.org/github.com/gophercises/urlshort",
-		"/yaml-godoc":     "https://godoc.org/gopkg.in/yaml.v2",
-	}
-
-	mapHandler := MapHandler(pathsToUrls, mux)
-
-	yaml := `
+var (
+	yamlRedirects = `
 - path: /urlshort
   url: https://github.com/gophercises/urlshort
 - path: /urlshort-final
   url: https://github.com/gophercises/urlshort/tree/solution
 `
+)
 
-	yamlHandler, err := YAMLHandler([]byte(yaml), mapHandler)
+// A map containing ALL redirects regardless of their source config, eg: yaml, json, etc.
+var redirects *map[string]string
 
-	if err != nil {
-		panic(err)
+func main() {
+	// default mux will be our final fallback
+	mux := defaultMux()
+
+	redirects = &map[string]string{
+		"/urlshort-godoc": "https://godoc.org/github.com/gophercises/urlshort",
+		"/yaml-godoc":     "https://godoc.org/gopkg.in/yaml.v2",
 	}
 
+	addYAMLRedirects([]byte(yamlRedirects), redirects)
+
+	handler := createHandler(redirects, mux)
+
 	fmt.Println("Starting the server on :8080")
-	http.ListenAndServe(":8080", yamlHandler)
+	fmt.Println("with the following redirects configured:")
+
+	for path, url := range *redirects {
+		fmt.Println("Path", path)
+		fmt.Println("to URL", url)
+	}
+
+	http.ListenAndServe(":8080", handler)
 }
 
 func defaultMux() *http.ServeMux {
@@ -50,10 +53,15 @@ func hello(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, "Hello, world!")
 }
 
-func MapHandler(pathsToUrls map[string]string, fallback http.Handler) http.HandlerFunc {
+// createHandler replaces MapHandler.
+// There is no need for multiple handlers
+// when all we need to do is parse the various
+// configurations (yaml, json, etc) and add those
+// redirects to our ultimate redirect map.
+func createHandler(redirects *map[string]string, fallback http.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
-		url, ok := pathsToUrls[r.URL.Path]
+		url, ok := (*redirects)[r.URL.Path]
 
 		if !ok {
 			fallback.ServeHTTP(w, r)
@@ -65,22 +73,26 @@ func MapHandler(pathsToUrls map[string]string, fallback http.Handler) http.Handl
 	}
 }
 
-func YAMLHandler(yml []byte, fallback http.Handler) (http.HandlerFunc, error) {
-	yamlMappings := []yamlConfig{}
+// addYAMLRedirects appends the YAML-configured redirects to the master redirect map.
+func addYAMLRedirects(yml []byte, redirects *map[string]string) {
+
+	// Just inline the struct.
+	// No need for a named type
+	// before we need this struct elsewhere.
+	yamlMappings := []struct{
+		Path string `yaml:"path"`
+		URL  string `yaml:"url"`
+	}{}
 
 	err := yaml.Unmarshal(yml, &yamlMappings)
 
-	return func(w http.ResponseWriter, r *http.Request) {
+	// if we can't parse the redirects,
+	// we shouldn't continue.
+	if err != nil {
+		panic(err)
+	}
 
-		for _, m := range yamlMappings {
-
-			if m.Path == r.URL.Path {
-				http.Redirect(w, r, m.URL, http.StatusPermanentRedirect)
-
-				return
-			}
-		}
-
-		fallback.ServeHTTP(w, r)
-	}, err
+	for _, m := range yamlMappings {
+		(*redirects)[m.Path] = m.URL
+	}
 }
